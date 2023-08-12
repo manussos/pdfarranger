@@ -1186,7 +1186,7 @@ class PdfArranger(Gtk.Application):
         response, chooser = self.open_dialog(_('Open…'))
 
         if response == Gtk.ResponseType.ACCEPT:
-            if self.is_unsaved or self.save_file:
+            if len(self.pdfqueue) > 0 or len(self.metadata) > 0:
                 self.on_action_new(filenames=chooser.get_filenames())
             else:
                 adder = PageAdder(self)
@@ -2250,8 +2250,8 @@ class PdfArranger(Gtk.Application):
         page_width = max(p.width_in_points() for p, _ in self.model)
         page_height = max(p.height_in_points() for p, _ in self.model)
         margins = 12  # leave 6 pixel at left and 6 pixel at right
-        zoom_scaleX_new = (sw_width - cell_extraX - margins) / page_width
-        zoom_scaleY_new = (sw_height - cell_extraY) / page_height
+        zoom_scaleX_new = max(1, (sw_width - cell_extraX - margins)) / page_width
+        zoom_scaleY_new = max(1, (sw_height - cell_extraY)) / page_height
         zoom_scale = min(zoom_scaleY_new, zoom_scaleX_new)
 
         lower, upper = self.zoom_level_limits
@@ -2388,6 +2388,7 @@ class PdfArranger(Gtk.Application):
         self.undomanager.commit("Merge")
         self.set_unsaved(True)
         self.clear_selected()
+        self.iconview.unselect_all()
 
         ndpage = selection[-1].get_indices()[0]
         before = ndpage < len(self.model)
@@ -2398,7 +2399,8 @@ class PdfArranger(Gtk.Application):
         adder = PageAdder(self)
         adder.move(ref, before)
         adder.addpages(file)
-        adder.commit(select_added=False, add_to_undomanager=False)
+        with GObject.signal_handler_block(self.iconview, self.id_selection_changed_event):
+            adder.commit(select_added=True, add_to_undomanager=False)
 
         nlpage = 0
         while ndpage < len(self.model) and nlpage < len(data):

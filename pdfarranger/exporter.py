@@ -24,6 +24,7 @@ import tempfile
 import io
 import gi
 import locale
+import packaging.version as version
 from . import metadata
 from gi.repository import Gtk
 gi.require_version("Poppler", "0.18")
@@ -348,7 +349,7 @@ def _append_page(current_page, copied_pages, pdf_output, row):
         new_page.Annots = pdf_output.copy_foreign(indirect_annots)
 
 
-def export_doc(pdf_input, pages, mdata, files_out, quit_flag):
+def export_doc(pdf_input, pages, mdata, files_out, quit_flag, test_mode=False):
     """Same as export() but with pikepdf.PDF objects instead of files"""
     pdf_output = pikepdf.Pdf.new()
     _copy_n_transform(pdf_input, pdf_output, pages, quit_flag)
@@ -375,16 +376,21 @@ def export_doc(pdf_input, pages, mdata, files_out, quit_flag):
             outpdf.save(files_out[n])
     else:
         if isinstance(files_out[0], str):
-            _set_meta(mdata, pdf_input, pdf_output)
+            if not test_mode:
+                _set_meta(mdata, pdf_input, pdf_output)
             _remove_unreferenced_resources(pdf_output)
-        pdf_output.save(files_out[0])
+        if test_mode:
+            pdf_output.save(files_out[0], qdf=True, static_id=True, compress_streams=False,
+                            stream_decode_level=pikepdf.StreamDecodeLevel.all)
+        else:
+            pdf_output.save(files_out[0])
 
 
-def export(files, pages, mdata, files_out, quit_flag, _export_msg):
+def export(files, pages, mdata, files_out, quit_flag, _export_msg, test_mode=False):
     pdf_input = [
         pikepdf.open(copyname, password=password) for copyname, password in files
     ]
-    export_doc(pdf_input, pages, mdata, files_out, quit_flag)
+    export_doc(pdf_input, pages, mdata, files_out, quit_flag, test_mode)
 
 
 def num_pages(filepath):
@@ -399,6 +405,7 @@ def num_pages(filepath):
 
 
 def generate_booklet(pdfqueue, tmp_dir, pages):
+    pre_pike_2_7 = version.parse(pikepdf.__version__) < version.Version('2.7.0')
     file, filename = make_tmp_file(tmp_dir)
     content_dict = pikepdf.Dictionary({})
     file_indexes = set()
@@ -447,7 +454,7 @@ def generate_booklet(pdfqueue, tmp_dir, pages):
             )
 
         # workaround for pikepdf <= 2.6.0. See https://github.com/pikepdf/pikepdf/issues/174
-        if pikepdf.__version__ < '2.7.0':
+        if pre_pike_2_7:
             newpage = file.make_indirect(newpage)
         file.pages.append(newpage)
     for __ in range(to_remove):
